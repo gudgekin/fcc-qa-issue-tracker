@@ -7,37 +7,52 @@ const assert = chai.assert;
 
 suite('Functional Tests', function() {
 
-  let issueId = '';
+  let issueId = ''; // Global variable to store the ID of the issue being tested
+  let tempIssueId = ''; // Variable for re-creating the issue later
 
-  // Test 1: Create an issue (with all required fields)
+  // --- 1. Create an issue with every field: POST request ---
   test('Create an issue with all required fields', function(done) {
     chai.request(server)
-      .post('/api/issues/test')  // Replace 'test' with your actual project name
+      .post('/api/issues/test')
       .send({
-        issue_title: 'Test issue',
-        issue_text: 'This is a test issue',
+        issue_title: 'Test issue 1',
+        issue_text: 'This is a test issue for all fields',
         created_by: 'Tester',
         assigned_to: 'Nobody',
-        status_text: 'Open',
+        status_text: 'In Progress',
       })
       .end(function(err, res) {
         assert.equal(res.status, 200);
         assert.property(res.body, '_id');
-        assert.property(res.body, 'issue_title');
-        assert.property(res.body, 'created_by');
-        assert.equal(res.body.issue_title, 'Test issue');
-        assert.equal(res.body.issue_text, 'This is a test issue');
-        assert.equal(res.body.created_by, 'Tester');
-        assert.equal(res.body.status_text, 'Open');
-        issueId = res.body._id;  // Store the created issue's ID
+        assert.equal(res.body.issue_title, 'Test issue 1');
+        issueId = res.body._id; // Store the ID for future tests
         done();
       });
   });
 
-  // Test 2: Create an issue (missing required fields)
+  // --- 2. Create an issue with only required fields: POST request ---
+  test('Create an issue with only required fields', function(done) {
+    chai.request(server)
+      .post('/api/issues/test')
+      .send({
+        issue_title: 'Test issue 2 (Required)',
+        issue_text: 'This is a test issue with only required fields',
+        created_by: 'Tester',
+      })
+      .end(function(err, res) {
+        assert.equal(res.status, 200);
+        assert.property(res.body, '_id');
+        assert.equal(res.body.assigned_to, ''); // Should default to empty string
+        assert.equal(res.body.status_text, ''); // Should default to empty string
+        tempIssueId = res.body._id; // Store this ID to be updated/deleted later
+        done();
+      });
+  });
+
+  // --- 3. Create an issue with missing required fields: POST request ---
   test('Create an issue with missing required fields', function(done) {
     chai.request(server)
-      .post('/api/issues/test')  // Replace 'test' with your actual project name
+      .post('/api/issues/test')
       .send({
         issue_title: 'Test issue without created_by',
         issue_text: 'This is a test issue without created_by field',
@@ -49,39 +64,41 @@ suite('Functional Tests', function() {
       });
   });
 
-  // Test 3: Get all issues
-  test('Get all issues', function(done) {
+  // --- 4. View issues on a project: GET request ---
+  test('View all issues on a project', function(done) {
     chai.request(server)
-      .get('/api/issues/test')  // Replace 'test' with your actual project name
+      .get('/api/issues/test')
       .end(function(err, res) {
         assert.equal(res.status, 200);
         assert.isArray(res.body);
-        assert.isAtLeast(res.body.length, 1);  // Ensure at least 1 issue exists
+        assert.isAtLeast(res.body.length, 2); // Should have at least the two issues created above
         done();
       });
   });
 
-  // Test 4: Get issues with filters (open=true)
-  test('Get issues with filter open=true', function(done) {
+  // --- 5. View issues on a project with one filter: GET request ---
+  test('View issues with one filter: assigned_to', function(done) {
     chai.request(server)
-      .get('/api/issues/test?open=true')  // Replace 'test' with your actual project name
+      .get('/api/issues/test?assigned_to=Nobody')
       .end(function(err, res) {
         assert.equal(res.status, 200);
         assert.isArray(res.body);
+        assert.isAtLeast(res.body.length, 1);
         res.body.forEach(function(issue) {
-          assert.equal(issue.open, true);
+          assert.equal(issue.assigned_to, 'Nobody');
         });
         done();
       });
   });
 
-  // Test 5: Get issues with multiple filters (assigned_to)
-  test('Get issues with multiple filters', function(done) {
+  // --- 6. View issues on a project with multiple filters: GET request ---
+  test('View issues with multiple filters: assigned_to and open=true', function(done) {
     chai.request(server)
-      .get('/api/issues/test?assigned_to=Nobody&open=true')  // Replace 'test' with your actual project name
+      .get('/api/issues/test?assigned_to=Nobody&open=true')
       .end(function(err, res) {
         assert.equal(res.status, 200);
         assert.isArray(res.body);
+        assert.isAtLeast(res.body.length, 1);
         res.body.forEach(function(issue) {
           assert.equal(issue.assigned_to, 'Nobody');
           assert.equal(issue.open, true);
@@ -90,14 +107,13 @@ suite('Functional Tests', function() {
       });
   });
 
-  // Test 6: Update an issue (with valid _id and fields)
-  test('Update an issue with valid _id and fields', function(done) {
+  // --- 7. Update one field on an issue: PUT request ---
+  test('Update one field on an issue (issue_text)', function(done) {
     chai.request(server)
-      .put('/api/issues/test')  // Replace 'test' with your project name
+      .put('/api/issues/test')
       .send({
-        _id: issueId,  // Use the issueId from the previous POST test
-        issue_title: 'Updated Test issue',
-        status_text: 'Closed',
+        _id: issueId,
+        issue_text: 'Updated issue text!',
       })
       .end(function(err, res) {
         assert.equal(res.status, 200);
@@ -107,13 +123,29 @@ suite('Functional Tests', function() {
       });
   });
 
-  // Test 7: Update an issue without _id
-  test('Update an issue without _id', function(done) {
+  // --- 8. Update multiple fields on an issue: PUT request ---
+  test('Update multiple fields on an issue (title and status)', function(done) {
     chai.request(server)
-      .put('/api/issues/test')  // Replace 'test' with your project name
+      .put('/api/issues/test')
       .send({
-        issue_title: 'Updated Test issue without _id',
-        status_text: 'Closed',
+        _id: issueId,
+        issue_title: 'Updated Title',
+        status_text: 'Resolved',
+      })
+      .end(function(err, res) {
+        assert.equal(res.status, 200);
+        assert.equal(res.body.result, 'successfully updated');
+        assert.equal(res.body._id, issueId);
+        done();
+      });
+  });
+
+  // --- 9. Update an issue with missing _id: PUT request ---
+  test('Update an issue with missing _id', function(done) {
+    chai.request(server)
+      .put('/api/issues/test')
+      .send({
+        issue_title: 'Title without ID',
       })
       .end(function(err, res) {
         assert.equal(res.status, 200);
@@ -122,12 +154,12 @@ suite('Functional Tests', function() {
       });
   });
 
-  // Test 8: Update an issue without update fields
-  test('Update an issue without update fields', function(done) {
+  // --- 10. Update an issue with no fields to update: PUT request ---
+  test('Update an issue with no fields to update', function(done) {
     chai.request(server)
-      .put('/api/issues/test')  // Replace 'test' with your project name
+      .put('/api/issues/test')
       .send({
-        _id: issueId,  // Use the issueId from the previous POST test
+        _id: issueId,
       })
       .end(function(err, res) {
         assert.equal(res.status, 200);
@@ -136,24 +168,38 @@ suite('Functional Tests', function() {
       });
   });
 
-  // Test 9: Delete an issue with valid _id
-  test('Delete an issue with valid _id', function(done) {
+  // --- 11. Update an issue with an invalid _id: PUT request ---
+  test('Update an issue with an invalid _id', function(done) {
     chai.request(server)
-      .delete('/api/issues/test')  // Replace 'test' with your project name
-      .send({ _id: issueId })  // Send the issueId to delete the specific issue
+      .put('/api/issues/test')
+      .send({
+        _id: '5f665eb45832a504ea264516', // Example invalid but correctly formatted ID
+        issue_title: 'Attempted Update',
+      })
       .end(function(err, res) {
         assert.equal(res.status, 200);
-        assert.equal(res.body.result, 'successfully deleted');
-        assert.equal(res.body._id, issueId);
+        assert.deepEqual(res.body, { error: 'could not update', _id: '5f665eb45832a504ea264516' });
         done();
       });
   });
 
-  // Test 10: Delete an issue with missing _id
+  // --- 12. Delete an issue with an invalid _id: DELETE request ---
+  test('Delete an issue with an invalid _id', function(done) {
+    chai.request(server)
+      .delete('/api/issues/test')
+      .send({ _id: '5f665eb45832a504ea264516' })
+      .end(function(err, res) {
+        assert.equal(res.status, 200);
+        assert.deepEqual(res.body, { error: 'could not delete', _id: '5f665eb45832a504ea264516' });
+        done();
+      });
+  });
+  
+  // --- 13. Delete an issue with missing _id: DELETE request ---
   test('Delete an issue with missing _id', function(done) {
     chai.request(server)
-      .delete('/api/issues/test')  // Replace 'test' with your project name
-      .send({})  // Send no _id
+      .delete('/api/issues/test')
+      .send({})
       .end(function(err, res) {
         assert.equal(res.status, 200);
         assert.deepEqual(res.body, { error: 'missing _id' });
@@ -161,58 +207,15 @@ suite('Functional Tests', function() {
       });
   });
 
-  // Test 11: Update an issue with closed status (when it was previously open)
-  test('Update issue to closed status', function(done) {
+  // --- 14. Delete an issue with a valid _id: DELETE request (This must be the last test on this ID) ---
+  test('Delete an issue with a valid _id', function(done) {
     chai.request(server)
-      .put('/api/issues/test')  // Replace 'test' with your project name
-      .send({
-        _id: issueId,  // Use the issueId from the previous POST test
-        status_text: 'Closed',
-      })
+      .delete('/api/issues/test')
+      .send({ _id: tempIssueId }) // Deletes the issue created in Test 2
       .end(function(err, res) {
         assert.equal(res.status, 200);
-        assert.equal(res.body.result, 'successfully updated');
-        assert.equal(res.body._id, issueId);
-        done();
-      });
-  });
-
-  // Test 12: Update an issue with invalid status (testing edge cases)
-  test('Update an issue with invalid status', function(done) {
-    chai.request(server)
-      .put('/api/issues/test')  // Replace 'test' with your project name
-      .send({
-        _id: issueId,  // Use the issueId from the previous POST test
-        status_text: null,  // Invalid status
-      })
-      .end(function(err, res) {
-        assert.equal(res.status, 200);
-        assert.deepEqual(res.body, { error: 'could not update', _id: issueId });
-        done();
-      });
-  });
-
-  // Test 13: Get issues by multiple filters
-  test('Get issues with multiple filters and statuses', function(done) {
-    chai.request(server)
-      .get('/api/issues/test?open=true&assigned_to=Nobody')  // Replace 'test' with your actual project name
-      .end(function(err, res) {
-        assert.equal(res.status, 200);
-        assert.isArray(res.body);
-        res.body.forEach(function(issue) {
-          assert.equal(issue.assigned_to, 'Nobody');
-          assert.equal(issue.open, true);
-        });
-        done();
-      });
-  });
-
-  // Test 14: Invalid project name in GET request
-  test('Get issues with invalid project name', function(done) {
-    chai.request(server)
-      .get('/api/issues/invalidproject')  // Replace with an invalid project name
-      .end(function(err, res) {
-        assert.equal(res.status, 404);  // Should return 404 if project doesn't exist
+        assert.equal(res.body.result, 'successfully deleted');
+        assert.equal(res.body._id, tempIssueId);
         done();
       });
   });

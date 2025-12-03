@@ -10,24 +10,26 @@ module.exports = function (app) {
 
       let project = req.params.project;
 
-      // Filter includes the project name and all optional query parameters
-      let filter = { project, ...req.query };
+      // Optional filters from query string
+      let filter = { project }; // include project in filter
 
-      // Ensure that if 'open' is passed, it is converted to a boolean
-      if (filter.open) {
-        filter.open = filter.open === 'true';
-      }
+      // Check if project exists
+      Issue.findOne({ project: project })
+        .then(issue => {
+          if (!issue) {
+            return res.status(404).send('Project not found');
+          }
 
-      // 1. FIX: The `.get` route should just query for issues and return the array.
-      // If no issues are found, it correctly returns an empty array, which is expected.
-      // The previous `Issue.findOne` check was redundant and buggy.
-      Issue.find(filter)
-        .select('-__v') // Exclude the Mongoose version key
-        .then(issues => {
-          res.json(issues);
+          // If project exists, proceed with filtering
+          for (let key in req.query) {
+            filter[key] = req.query[key];
+          }
+
+          Issue.find(filter)
+            .then(issues => res.json(issues))
+            .catch(err => res.json({ error: 'could not fetch issues' }));
         })
         .catch(err => {
-          console.error("GET error:", err);
           res.json({ error: 'could not fetch issues' });
         });
           
@@ -37,6 +39,8 @@ module.exports = function (app) {
 
       let project = req.params.project;
 
+      // Get the data from the request body
+    
       const issueTitle = req.body.issue_title;
       const issueText = req.body.issue_text;
       const createdBy = req.body.created_by;
@@ -58,24 +62,16 @@ module.exports = function (app) {
         status_text: statusText
       });
 
-      // Save to MongoDB
+      console.log("Project received:", project);
+
+      // Save to MongoDB using Promise
       newIssue.save()
         .then(function(savedIssue) {
-          // Selectively return fields as required by the test
-          res.json({
-            _id: savedIssue._id,
-            issue_title: savedIssue.issue_title,
-            issue_text: savedIssue.issue_text,
-            created_on: savedIssue.created_on,
-            updated_on: savedIssue.updated_on,
-            created_by: savedIssue.created_by,
-            assigned_to: savedIssue.assigned_to,
-            open: savedIssue.open,
-            status_text: savedIssue.status_text
-          });
+          console.log('Saved issue:', savedIssue);
+          res.json(savedIssue);
         })
         .catch(function(err) {
-          console.error('Save error:', err);
+          console.log('Save error:', err);
           res.json({ error: 'could not save issue' });
         });
       
@@ -83,52 +79,47 @@ module.exports = function (app) {
     
     .put(function (req, res) {
 
+      let project = req.params.project;
+
       const _id = req.body._id;
+      let updates = { ...req.body }; // Copy the request body for updates
+      delete updates._id;  // Don't update the _id field
 
       if (!_id) {
         return res.json({ error: 'missing _id' });
       }
 
-      let updates = {};
-      let updateFieldsFound = false;
+      // Check for status_text and close the issue if status_text is "closed"
+      if (req.body.status_text && req.body.status_text.toLowerCase() === 'closed') {
+        updates.open = false;  // Mark issue as closed (open = false)
+      }
 
-      // 2. FIX: Iterate over req.body and only include non-empty update fields
-      for (const key in req.body) {
-        // Skip _id and project
-        if (key !== '_id' && key !== 'project') {
-          // Check for a non-falsy value (excluding 0, which is unlikely for these fields)
-          // The issue is fields being sent as "" or null.
-          if (req.body[key] !== undefined && req.body[key] !== null && req.body[key] !== "") {
-            updates[key] = req.body[key];
-            updateFieldsFound = true;
-          }
+      // Remove empty fields from the update object
+      for (let key in req.body) {
+        if (!req.body[key]) {
+          delete req.body[key];
         }
       }
 
-      // If no update fields were found (only _id was present or all fields were empty)
-      if (!updateFieldsFound) {
+      // If there are no update fields, return an error
+      if (Object.keys(updates).length === 0) {
         return res.json({ error: 'no update field(s) sent', _id });
       }
 
-      // Check for status_text 'closed' to explicitly set 'open' to false
-      if (updates.status_text && updates.status_text.toLowerCase() === 'closed') {
-        updates.open = false;  // Mark issue as closed (open = false)
-      }
-      
-      // Always update the updated_on field
+      // Add/update the updated_on field to the current date
       updates.updated_on = new Date();
+
+      console.log('Request body:', req.body);
 
       // Perform the update
       Issue.findByIdAndUpdate(_id, updates, { new: true })
         .then(result => {
           if (!result) {
-            // This handles an issue with a valid format ID that doesn't exist
             return res.json({ error: 'could not update', _id });
           }
           res.json({ result: 'successfully updated', _id });
         })
         .catch(err => {
-          // This handles an issue with an invalid ID format
           res.json({ error: 'could not update', _id });
         });
       
@@ -136,7 +127,14 @@ module.exports = function (app) {
     
     .delete(function (req, res){
 
+      let project = req.params.project;
+      
+      // const { _id } = req.body;
+
       const _id = req.body._id;
+      let updates = { ...req.body }; // Create a copy of the request body
+      delete updates._id; // Remove _id since it shouldn't be updated
+
 
       if (!_id) {
         return res.json({ error: 'missing _id' });
