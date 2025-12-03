@@ -10,19 +10,18 @@ module.exports = function (app) {
 
       let project = req.params.project;
 
-      // Filter includes the project name and all optional query parameters
+      // filter includes project name, optional parameters
       let filter = { project, ...req.query };
 
-      // Ensure that if 'open' is passed, it is converted to a boolean
+      // if 'open' convert to boolean
       if (filter.open) {
         filter.open = filter.open === 'true';
       }
 
-      // 1. FIX: The `.get` route should just query for issues and return the array.
-      // If no issues are found, it correctly returns an empty array, which is expected.
-      // The previous `Issue.findOne` check was redundant and buggy.
+      // query for issues, return array
+      // if no issues, return empty array
       Issue.find(filter)
-        .select('-__v') // Exclude the Mongoose version key
+        .select('-__v') // exclude Mongoose version key
         .then(issues => {
           res.json(issues);
         })
@@ -43,12 +42,12 @@ module.exports = function (app) {
       const assignedTo = req.body.assigned_to || '';
       const statusText = req.body.status_text || '';
 
-      // Check required fields
+      // check required fields
       if (!issueTitle || !issueText || !createdBy) {
         return res.json({ error: 'required field(s) missing' });
       }
 
-      // Create new Issue
+      // create new Issue
       const newIssue = new Issue({
         project: project,
         issue_title: issueTitle,
@@ -58,10 +57,10 @@ module.exports = function (app) {
         status_text: statusText
       });
 
-      // Save to MongoDB
+      // save to MongoDB
       newIssue.save()
         .then(function(savedIssue) {
-          // Selectively return fields as required by the test
+          // return fields as required by the test
           res.json({
             _id: savedIssue._id,
             issue_title: savedIssue.issue_title,
@@ -92,11 +91,11 @@ module.exports = function (app) {
       let updates = {};
       let updateFieldsFound = false;
 
-      // 2. FIX: Iterate over req.body and only include non-empty update fields
+      // Iterate over req.body, include only non-empty update fields
       for (const key in req.body) {
         // Skip _id and project
         if (key !== '_id' && key !== 'project') {
-          // Check for a non-falsy value (excluding 0, which is unlikely for these fields)
+          // check for non-falsy value (excluding 0)
           // The issue is fields being sent as "" or null.
           if (req.body[key] !== undefined && req.body[key] !== null && req.body[key] !== "") {
             updates[key] = req.body[key];
@@ -105,30 +104,28 @@ module.exports = function (app) {
         }
       }
 
-      // If no update fields were found (only _id was present or all fields were empty)
+      // if no update fields (only _id, or all fields empty)
       if (!updateFieldsFound) {
         return res.json({ error: 'no update field(s) sent', _id });
       }
 
-      // Check for status_text 'closed' to explicitly set 'open' to false
+      // check for status_text 'closed' to set 'open' to false
       if (updates.status_text && updates.status_text.toLowerCase() === 'closed') {
-        updates.open = false;  // Mark issue as closed (open = false)
+        updates.open = false;  // mark issue closed
       }
       
-      // Always update the updated_on field
+      // always update the updated_on field
       updates.updated_on = new Date();
 
-      // Perform the update
+      // update
       Issue.findByIdAndUpdate(_id, updates, { new: true })
         .then(result => {
           if (!result) {
-            // This handles an issue with a valid format ID that doesn't exist
             return res.json({ error: 'could not update', _id });
           }
           res.json({ result: 'successfully updated', _id });
         })
         .catch(err => {
-          // This handles an issue with an invalid ID format
           res.json({ error: 'could not update', _id });
         });
       
