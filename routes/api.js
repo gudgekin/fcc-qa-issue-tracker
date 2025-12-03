@@ -12,14 +12,27 @@ module.exports = function (app) {
 
       // Optional filters from query string
       let filter = { project }; // include project in filter
-      for (let key in req.query) {
-        filter[key] = req.query[key];
-      }
 
-      Issue.find(filter)
-        .then(issues => res.json(issues))
-        .catch(err => res.json({ error: 'could not fetch issues' }));
-      
+      // Check if project exists
+      Issue.findOne({ project: project })
+        .then(issue => {
+          if (!issue) {
+            return res.status(404).send('Project not found');
+          }
+
+          // If project exists, proceed with filtering
+          for (let key in req.query) {
+            filter[key] = req.query[key];
+          }
+
+          Issue.find(filter)
+            .then(issues => res.json(issues))
+            .catch(err => res.json({ error: 'could not fetch issues' }));
+        })
+        .catch(err => {
+          res.json({ error: 'could not fetch issues' });
+        });
+          
     }) // end .get
     
     .post(function (req, res) {
@@ -68,25 +81,37 @@ module.exports = function (app) {
 
       let project = req.params.project;
 
-      const { _id, ...updates } = req.body;
+      const _id = req.body._id;
+      let updates = { ...req.body }; // Copy the request body for updates
+      delete updates._id;  // Don't update the _id field
 
       if (!_id) {
         return res.json({ error: 'missing _id' });
       }
 
-      // Remove empty fields
-      for (let key in updates) {
-        if (!updates[key]) {
-          delete updates[key];
+      // Check for status_text and close the issue if status_text is "closed"
+      if (req.body.status_text && req.body.status_text.toLowerCase() === 'closed') {
+        updates.open = false;  // Mark issue as closed (open = false)
+      }
+
+      // Remove empty fields from the update object
+      for (let key in req.body) {
+        if (!req.body[key]) {
+          delete req.body[key];
         }
       }
 
+      // If there are no update fields, return an error
       if (Object.keys(updates).length === 0) {
         return res.json({ error: 'no update field(s) sent', _id });
       }
 
+      // Add/update the updated_on field to the current date
       updates.updated_on = new Date();
 
+      console.log('Request body:', req.body);
+
+      // Perform the update
       Issue.findByIdAndUpdate(_id, updates, { new: true })
         .then(result => {
           if (!result) {
@@ -104,7 +129,12 @@ module.exports = function (app) {
 
       let project = req.params.project;
       
-      const { _id } = req.body;
+      // const { _id } = req.body;
+
+      const _id = req.body._id;
+      let updates = { ...req.body }; // Create a copy of the request body
+      delete updates._id; // Remove _id since it shouldn't be updated
+
 
       if (!_id) {
         return res.json({ error: 'missing _id' });
