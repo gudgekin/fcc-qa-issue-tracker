@@ -5,6 +5,15 @@ const bodyParser  = require('body-parser');
 const expect      = require('chai').expect;
 const cors        = require('cors');
 require('dotenv').config();
+const mongoose = require('mongoose');
+
+mongoose.connect(process.env.MONGO_URI)
+  .then(() => {
+    console.log('MongoDB connected successfully');
+  })
+  .catch(err => {
+    console.error('MongoDB connection error:', err);
+  });
 
 const apiRoutes         = require('./routes/api.js');
 const fccTestingRoutes  = require('./routes/fcctesting.js');
